@@ -1,8 +1,20 @@
 from flask import Flask, jsonify
+from sqlalchemy import create_engine, func
+from sqlalchemy.orm import Session
+from sqlalchemy.ext.automap import automap_base
+import datetime as dt
 
 app = Flask(__name__)
 
-# Define the homepage and list of available routes
+# Set up database connection
+engine = create_engine("sqlite:///Resources/hawaii.sqlite")
+Base = automap_base()
+Base.prepare(engine, reflect=True)
+Station = Base.classes.station
+Measurement = Base.classes.measurement
+session = Session(engine)
+
+# Landing page with available routes
 @app.route("/")
 def home():
     return (
@@ -15,30 +27,57 @@ def home():
         "/api/v1.0/&lt;start&gt;/&lt;end&gt;"
     )
 
-# Define the /api/v1.0/precipitation route
+# Precipitation route
 @app.route("/api/v1.0/precipitation")
 def precipitation():
-    # Your code to calculate and return the precipitation data as JSON
-    
-# Define the /api/v1.0/stations route
+    results = session.query(Measurement.date, Measurement.prcp).all()
+    precipitation_data = {date: prcp for date, prcp in results}
+    return jsonify(precipitation_data)
+
+# Stations route
 @app.route("/api/v1.0/stations")
 def stations():
-    # Your code to retrieve and return the list of stations as JSON
-    
-# Define the /api/v1.0/tobs route
+    results = session.query(Station.station).all()
+    station_list = [station[0] for station in results]
+    return jsonify(station_list)
+
+# TOBS route
 @app.route("/api/v1.0/tobs")
 def tobs():
-    # Your code to calculate and return the temperature observations for the most-active station as JSON
-    
-# Define the /api/v1.0/<start> route
+    most_active_station = session.query(Measurement.station, func.count(Measurement.station)) \
+        .group_by(Measurement.station).order_by(func.count(Measurement.station).desc()).first()[0]
+    most_recent_date = session.query(func.max(Measurement.date)).scalar()
+    one_year_ago = (dt.datetime.strptime(most_recent_date, '%Y-%m-%d') - dt.timedelta(days=365)).strftime('%Y-%m-%d')
+    results = session.query(Measurement.date, Measurement.tobs) \
+        .filter(Measurement.station == most_active_station) \
+        .filter(Measurement.date >= one_year_ago).all()
+    tobs_list = [{"date": date, "tobs": tobs} for date, tobs in results]
+    return jsonify(tobs_list)
+
+# Temperature range route for start date
 @app.route("/api/v1.0/<start>")
 def temperature_range_start(start):
-    # Your code to calculate and return temperature statistics for a specified start date as JSON
-    
-# Define the /api/v1.0/<start>/<end> route
+    temperature_stats = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)) \
+        .filter(Measurement.date >= start).all()
+    temp_stats_dict = {
+        "Min Temperature": temperature_stats[0][0],
+        "Average Temperature": temperature_stats[0][1],
+        "Max Temperature": temperature_stats[0][2]
+    }
+    return jsonify(temp_stats_dict)
+
+# Temperature range route for start and end dates
 @app.route("/api/v1.0/<start>/<end>")
 def temperature_range_start_end(start, end):
-    # Your code to calculate and return temperature statistics for a specified start-end range as JSON
-    
+    temperature_stats = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)) \
+        .filter(Measurement.date >= start) \
+        .filter(Measurement.date <= end).all()
+    temp_stats_dict = {
+        "Min Temperature": temperature_stats[0][0],
+        "Average Temperature": temperature_stats[0][1],
+        "Max Temperature": temperature_stats[0][2]
+    }
+    return jsonify(temp_stats_dict)
+
 if __name__ == '__main__':
     app.run(debug=True)
