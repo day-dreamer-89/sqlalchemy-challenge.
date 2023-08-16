@@ -12,7 +12,6 @@ Base = automap_base()
 Base.prepare(engine, reflect=True)
 Station = Base.classes.station
 Measurement = Base.classes.measurement
-session = Session(engine)
 
 # Landing page with available routes
 @app.route("/")
@@ -30,20 +29,25 @@ def home():
 # Precipitation route
 @app.route("/api/v1.0/precipitation")
 def precipitation():
+    session = Session(engine)
     results = session.query(Measurement.date, Measurement.prcp).all()
+    session.close()
     precipitation_data = {date: prcp for date, prcp in results}
     return jsonify(precipitation_data)
 
 # Stations route
 @app.route("/api/v1.0/stations")
 def stations():
+    session = Session(engine)
     results = session.query(Station.station).all()
+    session.close()
     station_list = [station[0] for station in results]
     return jsonify(station_list)
 
 # TOBS route
 @app.route("/api/v1.0/tobs")
 def tobs():
+    session = Session(engine)
     most_active_station = session.query(Measurement.station, func.count(Measurement.station)) \
         .group_by(Measurement.station).order_by(func.count(Measurement.station).desc()).first()[0]
     most_recent_date = session.query(func.max(Measurement.date)).scalar()
@@ -51,14 +55,17 @@ def tobs():
     results = session.query(Measurement.date, Measurement.tobs) \
         .filter(Measurement.station == most_active_station) \
         .filter(Measurement.date >= one_year_ago).all()
+    session.close()
     tobs_list = [{"date": date, "tobs": tobs} for date, tobs in results]
     return jsonify(tobs_list)
 
 # Temperature range route for start date
 @app.route("/api/v1.0/<start>")
 def temperature_range_start(start):
+    session = Session(engine)
     temperature_stats = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)) \
         .filter(Measurement.date >= start).all()
+    session.close()
     temp_stats_dict = {
         "Min Temperature": temperature_stats[0][0],
         "Average Temperature": temperature_stats[0][1],
@@ -69,9 +76,11 @@ def temperature_range_start(start):
 # Temperature range route for start and end dates
 @app.route("/api/v1.0/<start>/<end>")
 def temperature_range_start_end(start, end):
+    session = Session(engine)
     temperature_stats = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)) \
         .filter(Measurement.date >= start) \
         .filter(Measurement.date <= end).all()
+    session.close()
     temp_stats_dict = {
         "Min Temperature": temperature_stats[0][0],
         "Average Temperature": temperature_stats[0][1],
